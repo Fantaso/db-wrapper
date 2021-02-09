@@ -3,7 +3,7 @@ import sqlite3
 import sys
 from abc import ABCMeta, abstractmethod
 
-from .queries import Format
+from .formats import Format
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,6 @@ class SQLiteManager:
         :return: filtered entries
         :rtype: list
         """
-        """ Filter all entries from a model(table). """
         conditions = []
         for raw_field, raw_value in kwargs.items():
             formatter = Format(raw_field, raw_value)

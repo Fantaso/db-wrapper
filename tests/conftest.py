@@ -1,6 +1,5 @@
 import pytest
 
-# from ..db import SQLiteDB
 from core.db import SQLiteDB
 
 MODEL_NAME = "spoon_product"
@@ -31,36 +30,6 @@ DATA = [
 ]
 
 
-#
-# @pytest.fixture
-# def model_name() -> str:
-#     MODEL_NAME = "spoon_product"
-#     return MODEL_NAME
-#
-#
-# @pytest.fixture
-# def model_fields() -> List:
-#     MODEL_FIELDS = ["id", "url", "date", "rating"]
-#     return MODEL_FIELDS
-#
-#
-# @pytest.fixture
-# def create_model_sql() -> List:
-#     CREATE_MODEL = f"""
-#                     CREATE TABLE IF NOT EXISTS {MODEL_NAME} (
-#                     {MODEL_FIELDS[0]} integer PRIMARY KEY,
-#                     {MODEL_FIELDS[1]} text NOT NULL,
-#                     {MODEL_FIELDS[2]} text,
-#                     {MODEL_FIELDS[3]} integer);"""
-#     return CREATE_MODEL
-#
-#
-# @pytest.fixture
-# def insert_data_sql() -> List:
-#     INSERT_DATA = f"INSERT INTO {MODEL_NAME} VALUES (?,?,?,?)"
-#     return INSERT_DATA
-
-
 @pytest.fixture
 def empty_db():
     db = SQLiteDB(":memory:")
@@ -79,28 +48,10 @@ def db(empty_db):
 
 
 @pytest.fixture(scope="session")
-def filter():
-    db = SQLiteDB(":memory:")
-    db.connect()
+def filter(empty_db):
+    db = empty_db
     db.execute(CREATE_MODEL)
     db.executemany(INSERT_DATA, DATA)
     db.commit()
     yield db.manager.filter
     db.close()
-
-# @pytest.fixture
-# def another_base_request(db):
-#     return BaseRequest.objects.create(
-#         method=BaseRequestMethod.POST,
-#         path="http://shop.fantaso.de/",
-#         json_body='{"message":"another body"}',
-#     )
-#
-#
-# @pytest.fixture
-# def one_time_job(db, base_request):
-#     return Job.objects.create(
-#         title="one time request",
-#         start_time=FEB_27_2021_3_PM,
-#         request=base_request,
-#     )

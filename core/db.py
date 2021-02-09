@@ -66,7 +66,7 @@ class SQLiteManager:
         ## final query
         sql_conditions = " AND ".join(conditions)
         query = f"SELECT * FROM {model} WHERE {sql_conditions}"
-        logger.debug(f"SQL => {query}")
+        logger.debug(f"\nSQL => {query}")
         return self.db.execute(query).fetchall()
 
 

@@ -1,4 +1,5 @@
-import datetime
+from abc import ABCMeta, abstractmethod
+from datetime import date
 from typing import List, Union
 
 
@@ -16,8 +17,41 @@ class FieldTypeNotSupportedError(Exception):
 ######################
 ###  BASE CLASSES  ###
 ######################
-class BaseFieldFormat:
-    # TODO: change dict to tuple
+class BaseSingleFieldFormat:
+    def get_format_condition(self, lookup_operator):
+        return f"{self.field}{lookup_operator}{self.get_format_value()}"
+
+    def get_format_value(self) -> str:
+        """
+        Method that calls the subclass which holds the final format of the value to be used on the sql condition..
+        e.g:
+        field = name   =>  if field(column) in database is a string type: return a string type: 'name'
+        field = 7   =>  if field(column) in database is a integer type: return a string type: str(7)
+        field = datetime.date(2021,2,2)   =>  if field(column) in database is a date type: return a string type formatted: strftime('%Y-%m-%d')
+        """
+        return self.format_value(self.value)
+
+
+class BaseListFieldFormat:
+    def get_format_list_condition(self, lookup_operator):
+        return f"{self.field} {lookup_operator} ({self.get_format_list_value()})"
+
+    def get_format_list_value(self) -> str:
+        """
+        Method that calls the subclass which holds the final format of the value to be used on the sql condition.
+        e.g:
+        field in [name1, name2, ]   =>
+            if field(column) in database is a string type: return a string type concatenated: 'name1','name2'
+        field in [3, 7, ]   =>
+            if field(column) in database is a integer type: return a string type concatenated: str(3),str(7)
+        field in [datetime.date(2021,2,2), ]   =>
+            if field(column) in database is a date type: return a string type concatenated and formatted:
+            strftime('%Y-%m-%d'),strftime('%Y-%m-%d')
+        """
+        return ','.join(list(map(self.format_value, self.value)))
+
+
+class BaseFieldFormat(BaseSingleFieldFormat, BaseListFieldFormat, metaclass=ABCMeta):
     TYPE = None
     ALLOW_LOOKUPS = (
         "gt",
@@ -28,17 +62,18 @@ class BaseFieldFormat:
         "not_in",
     )
 
+    # TODO: change dict to tuple
     LOOKUPS = {
-        None: ("=", "equal_str"),
-        "gt": (">", "gt_str"),
-        "lt": ("<", "lt_str"),
-        "gte": (">=", "gte_str"),
-        "lte": ("<=", "lte_str"),
-        "in": ("IN", "in_str"),
-        "not_in": ("NOT IN", "not_in_str"),
+        None: ("=", "get_format_condition"),
+        "gt": (">", "get_format_condition"),
+        "lt": ("<", "get_format_condition"),
+        "gte": (">=", "get_format_condition"),
+        "lte": ("<=", "get_format_condition"),
+        "in": ("IN", "get_format_list_condition"),
+        "not_in": ("NOT IN", "get_format_list_condition"),
     }
 
-    def __init__(self, raw_field: str, raw_value: Union[str, int, datetime.date, List]):
+    def __init__(self, raw_field: str, raw_value: Union[str, int, date, List]):
         self.raw_field = raw_field
         self.raw_value = raw_value
         self.field = None
@@ -62,7 +97,7 @@ class BaseFieldFormat:
     # utils
     def validate_lookup(self):
         if self.lookup not in self.ALLOW_LOOKUPS:
-            supported_lookups = ",".join(lup for lup in self.LOOKUPS.keys() if lup is not None)
+            supported_lookups = ", ".join(lup for lup in self.LOOKUPS.keys() if lup is not None)
             raise FilterLookupError(f"This lookup is not supported: try {supported_lookups}")
 
     def is_lookup_query(self, field: str):
@@ -72,27 +107,8 @@ class BaseFieldFormat:
         field, lookup = raw_field.split("__")
         return field, lookup
 
-    ### All fields ###
-    def equal_str(self, lookup) -> str:
-        return self.format_str_condition(lookup)
-
-    ### Numeric, Date fields ###
-    def gt_str(self, lookup) -> str:
-        return self.format_str_condition(lookup)
-
-    def lt_str(self, lookup) -> str:
-        return self.format_str_condition(lookup)
-
-    def gte_str(self, lookup) -> str:
-        return self.format_str_condition(lookup)
-
-    def lte_str(self, lookup) -> str:
-        return self.format_str_condition(lookup)
-
-    def format_str_condition(self, lookup):
-        return f"{self.field}{lookup}{self.get_formatted_single_value(self.value)}"
-
-    def get_formatted_single_value(self, value) -> str:
+    @abstractmethod
+    def format_value(self, value: TYPE) -> str:
         """
         Override this method to change how the value in the condition if formatted.
         e.g:
@@ -100,33 +116,6 @@ class BaseFieldFormat:
         field = 7   =>  if field(column) in database is a integer type: return a string type: str(7)
         field = datetime.date(2021,2,2)   =>  if field(column) in database is a date type: return a string type formatted: strftime('%Y-%m-%d')
         """
-        return f"'{value}'"
-
-    ### Lists[all fields] ###
-    def in_str(self, lookup) -> str:
-        return self.format_list_condition(lookup)
-
-    def not_in_str(self, lookup) -> str:
-        return self.format_list_condition(lookup)
-
-    def format_list_condition(self, lookup):
-        return f"{self.field} {lookup} ({self.get_formatted_value_in_list(self.value)})"
-
-    # utils
-    def get_formatted_value_in_list(self, values: List) -> str:
-        """
-        Override this method to change how the values in the list are formatted to create the final condition.
-        e.g:
-        field in [name1, name2, ]   =>
-            if field(column) in database is a string type: return a string type concatenated: 'name1','name2'
-        field in [3, 7, ]   =>
-            if field(column) in database is a integer type: return a string type concatenated: str(3),str(7)
-        field in [datetime.date(2021,2,2), ]   =>
-            if field(column) in database is a date type: return a string type concatenated and formatted:
-            strftime('%Y-%m-%d'),strftime('%Y-%m-%d')
-        """
-        format = lambda x: f"'{x}'"
-        return ','.join(list(map(format, values)))
 
 
 #######################
@@ -136,31 +125,37 @@ class StringFieldFormat(BaseFieldFormat):
     TYPE = str
     ALLOW_LOOKUPS = ("in", "not_in")
 
+    def format_value(self, value: str) -> str:
+        """
+        This will return sql condition formatted for a string value:
+        - for a single value => field='value' or for all operators in class attr ALLOW_LOOKUPS
+        - for a value list => field IN ('value1', 'value2', )
+        """
+        return f"'{value}'"
+
 
 class DateFieldFormat(BaseFieldFormat):
-    TYPE = datetime.date
+    TYPE = date
 
-    def get_formatted_single_value(self, value) -> str:
-        """ Overriding the format of the date value condition. """
+    def format_value(self, value: date) -> str:
+        """
+        This will return sql condition formatted for an date value:
+        - for a single value => field='%Y-%m-%d' or field>='%Y-%m-%d' or for all operators in class attr ALLOW_LOOKUPS
+        - for a value list => field (NOT) IN ('%Y-%m-%d', '%Y-%m-%d', )
+        """
         return f"'{value.strftime('%Y-%m-%d')}'"
-
-    def get_formatted_value_in_list(self, values: List) -> str:
-        """ Overriding the format of the date values in the list. """
-        format_date = lambda x: f"'{x.strftime('%Y-%m-%d')}'"  # explicitly instead of __str__()
-        return ','.join(list(map(format_date, self.value)))
 
 
 class IntegerFieldFormat(BaseFieldFormat):
     TYPE = int
 
-    def get_formatted_single_value(self, value) -> str:
-        """ Overriding the format of the integer value condition. """
+    def format_value(self, value: int) -> str:
+        """
+        This will return sql condition formatted for an integer value:
+        - for a single value => field='%Y-%m-%d' or field>='%Y-%m-%d' or for all operators in class attr ALLOW_LOOKUPS
+        - for a value list => field (NOT) IN (value1, value2, )
+        """
         return f"{value}"
-
-    def get_formatted_value_in_list(self, values: List) -> str:
-        """ Overriding the format of the integer values in the list. """
-        format = lambda x: f"{x}"
-        return ','.join(list(map(format, values)))
 
 
 ###################
@@ -183,7 +178,7 @@ class Format:
             return IntegerFieldFormat(self.raw_field, self.raw_value)
         elif isinstance(self.raw_value, str):
             return StringFieldFormat(self.raw_field, self.raw_value)
-        elif isinstance(self.raw_value, datetime.date):
+        elif isinstance(self.raw_value, date):
             return DateFieldFormat(self.raw_field, self.raw_value)
 
         ### When they come in a list for lookups such: [IN, NOT IN]
